@@ -261,15 +261,171 @@ function Dashboard({profile,admin,settings}){
 function Stat({tone,icon,title,data}){return <div className={`bigStat ${tone}`}><span>{icon}</span><div><small>{title}</small><strong>{data.total}</strong><p>Present {data.present} · Absent {data.absent}</p></div></div>}
 
 function Learners({profile,admin,show}){
- const teacher=profile.role==='teacher';const [section,setSection]=useState(teacher?profile.section||'JSS':'JSS'),[grade,setGrade]=useState(teacher?profile.grade||'Grade 8':'Grade 7'),[stream,setStream]=useState(teacher?profile.stream||'':''),[search,setSearch]=useState(''),[rows,setRows]=useState([]),[busy,setBusy]=useState(false),[form,setForm]=useState({admission_no:'',kemis_no:'',full_name:'',gender:'Male',residence:'Day Scholar',section:teacher?profile.section||'JSS':'JSS',grade:teacher?profile.grade||'Grade 8':'Grade 7',stream:teacher?profile.stream||'':''});
- async function load(){setBusy(true);let q=supabase.from('learners').select('id,admission_no,kemis_no,full_name,gender,residence,section,grade,stream,active').eq('active',true);if(teacher)q=q.eq('grade',profile.grade||'').eq('stream',profile.stream||'');else{q=q.eq('section',section).eq('grade',grade);if(stream)q=q.eq('stream',stream)}const {data,error}=await q.order('full_name');setBusy(false);if(error)return show('Could not load learners: '+error.message);setRows(data||[])}
- useEffect(()=>{load()},[section,grade,stream,profile]);
- const visible=rows.filter(r=>[r.full_name,r.admission_no,r.kemis_no,r.stream].some(v=>norm(v).includes(norm(search))));
- async function add(e){e.preventDefault();if(teacher&&form.stream!==profile.stream)return show('You can only add learners to your assigned stream.');if(!form.full_name.trim())return show('Learner name is required.');const payload={admission_no:form.admission_no.trim()||null,kemis_no:form.kemis_no.trim()||null,full_name:form.full_name.trim(),gender:form.gender,residence:form.residence,section:teacher?profile.section:form.section,grade:teacher?profile.grade:form.grade,stream:teacher?profile.stream:form.stream.trim()||null,active:true};const {error}=await supabase.from('learners').insert(payload);if(error)return show('Could not save learner: '+error.message);show('Learner added.');setForm({...form,admission_no:'',kemis_no:'',full_name:''});load()}
- async function remove(id){if(!confirm('Remove this learner from the active register?'))return;const {error}=await supabase.from('learners').update({active:false}).eq('id',id);if(error)show(error.message);else{show('Learner removed from active register.');load()}}
- function importFile(e){const file=e.target.files?.[0];e.target.value='';if(!file)return;const reader=new FileReader();reader.onload=async ev=>{try{const wb=XLSX.read(ev.target.result,{type:'array'}),sheet=wb.Sheets[wb.SheetNames[0]],data=XLSX.utils.sheet_to_json(sheet);if(!data.length)return show('The spreadsheet is empty.');const payload=data.map(r=>({admission_no:String(r.Admission_No??r.Admission_Number??r['Adm Number']??'').trim()||null,kemis_no:String(r.KEMIS_Number??r.KEMIS??r['KEMIS Number']??'').trim()||null,full_name:String(r.Full_Name??r.Name??r['Full Name']??'').trim(),gender:String(r.Gender??'').trim()||null,residence:residenceLabel(r.Residence),section:teacher?profile.section:String(r.Section??r.section??form.section).trim(),grade:teacher?profile.grade:String(r.Class_Grade??r.Grade??r.grade??form.grade).trim(),stream:teacher?profile.stream:String(r.Stream??r.stream??'').trim()||null,active:true})).filter(r=>r.full_name);if(!payload.length)return show('No valid learner names were found.');const {error}=await supabase.from('learners').insert(payload);if(error)show('Import failed: '+error.message);else{show(`${payload.length} learners imported successfully.`);load()}}catch(err){show('Could not read spreadsheet: '+err.message)}};reader.readAsArrayBuffer(file)}
- function template(){const ws=XLSX.utils.json_to_sheet([{Admission_No:'1001',KEMIS_Number:'123456789',Full_Name:'Example Learner',Gender:'Male',Residence:'Day Scholar',Section:'JSS',Class_Grade:'Grade 8',Stream:'8JE'}]);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Learners');XLSX.writeFile(wb,'St_Georges_Learner_Import_Template.xlsx')}
- return <><div className="heroBar"><div><div className="eyebrow">LEARNER REGISTER</div><h3>{teacher?'My Assigned Learners':'Learners'}</h3><p>{rows.length} active learners</p></div><div className="heroActions"><button className="secondary" onClick={template}>Download CSV/Excel Template</button><label className="fileBtn">Import Excel<input type="file" accept=".xlsx,.xls" onChange={importFile}/></label></div></div>{admin||teacher?<div className="card"><h3>Add Learner</h3><form className="grid" onSubmit={add}><label>Admission Number<input value={form.admission_no} onChange={e=>setForm({...form,admission_no:e.target.value})}/></label><label>KEMIS Number<input value={form.kemis_no} onChange={e=>setForm({...form,kemis_no:e.target.value})}/></label><label>Full Name<input value={form.full_name} onChange={e=>setForm({...form,full_name:e.target.value})} required/></label><label>Gender<select value={form.gender} onChange={e=>setForm({...form,gender:e.target.value})}><option>Male</option><option>Female</option></select></label><label>Residence<select value={form.residence} onChange={e=>setForm({...form,residence:e.target.value})}><option>Day Scholar</option><option>Boarder</option></select></label><label>Section{teacher?<input value={form.section} readOnly/>:<select value={form.section} onChange={e=>setForm({...form,section:e.target.value,grade:LEVELS[e.target.value][0]})}>{Object.keys(LEVELS).map(x=><option key={x}>{x}</option>)}</select>}</label><label>Class / Grade{teacher?<input value={form.grade} readOnly/>:<select value={form.grade} onChange={e=>setForm({...form,grade:e.target.value})}>{LEVELS[form.section].map(x=><option key={x}>{x}</option>)}</select>}</label><label>Stream{teacher?<input value={form.stream} readOnly/>:<input value={form.stream} onChange={e=>setForm({...form,stream:e.target.value})} placeholder="8JE"/>}</label><div className="actions"><button disabled={busy}>{busy?'Saving…':'Add Learner'}</button></div></form></div>:null}<div className="card"><div className="toolbar"><div><h3>Learner List</h3><p className="muted">KEMIS number is used instead of UPI number.</p></div><div className="actions"><input className="search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search name, admission or KEMIS…"/>{!teacher&&<><select value={section} onChange={e=>{setSection(e.target.value);setGrade(LEVELS[e.target.value][0]);setStream('')}}>{Object.keys(LEVELS).map(x=><option key={x}>{x}</option>)}</select><select value={grade} onChange={e=>setGrade(e.target.value)}>{LEVELS[section].map(x=><option key={x}>{x}</option>)}</select><input value={stream} onChange={e=>setStream(e.target.value)} placeholder="Stream"/></>}</div></div><Table headers={['#','Admission','KEMIS Number','Learner','Gender','Residence','Class','Stream','Action']} rows={visible.map((r,i)=>[i+1,r.admission_no||'—',r.kemis_no||'—',r.full_name,r.gender||'—',residenceLabel(r.residence),r.grade||'—',r.stream||'—',<button className="small danger" onClick={()=>remove(r.id)}>Remove</button>])}/></div></>
+  const teacher=profile.role==='teacher';
+  const [section,setSection]=useState(teacher?profile.section||'JSS':'JSS');
+  const [grade,setGrade]=useState(teacher?profile.grade||'Grade 8':'Grade 7');
+  const [stream,setStream]=useState(teacher?profile.stream||'':'');
+  const [search,setSearch]=useState('');
+  const [rows,setRows]=useState([]);
+  const [busy,setBusy]=useState(false);
+  const [editing,setEditing]=useState(null);
+  const [attendanceEdit,setAttendanceEdit]=useState(null);
+
+  async function load(){
+    setBusy(true);
+    let q=supabase.from('learners').select('id,admission_no,kemis_no,full_name,gender,residence,section,grade,stream,active,created_at').eq('active',true);
+    if(teacher) q=q.eq('grade',profile.grade||'').eq('stream',profile.stream||'');
+    else { q=q.eq('section',section).eq('grade',grade); if(stream) q=q.eq('stream',stream); }
+    const {data,error}=await q.order('full_name');
+    setBusy(false);
+    if(error)return show('Could not load learners: '+error.message);
+    setRows(data||[]);
+  }
+  useEffect(()=>{load()},[section,grade,stream,profile.id,profile.role]);
+
+  const visible=rows.filter(r=>[r.full_name,r.admission_no,r.kemis_no,r.stream].some(v=>norm(v).includes(norm(search))));
+
+  const blank={
+    admission_no:'',kemis_no:'',full_name:'',gender:'Male',residence:'Day Scholar',
+    section:teacher?profile.section||'JSS':'JSS',grade:teacher?profile.grade||'Grade 8':'Grade 7',
+    stream:teacher?profile.stream||'':''
+  };
+  const [form,setForm]=useState(blank);
+
+  function beginEdit(r){
+    setForm({
+      admission_no:r.admission_no||'',kemis_no:r.kemis_no||'',full_name:r.full_name||'',
+      gender:r.gender||'Male',residence:residenceLabel(r.residence),
+      section:r.section||'JSS',grade:r.grade||'Grade 7',stream:r.stream||''
+    });
+    setEditing(r);
+  }
+
+  async function saveLearner(e){
+    e.preventDefault();
+    if(!form.full_name.trim())return show('Learner name is required.');
+    if(teacher && (form.section!==profile.section || form.grade!==profile.grade || form.stream!==profile.stream))
+      return show('You can only edit learners in your assigned class and stream.');
+    const payload={
+      admission_no:form.admission_no.trim()||null,
+      kemis_no:form.kemis_no.trim()||null,
+      full_name:form.full_name.trim(),
+      gender:form.gender,
+      residence:form.residence,
+      section:teacher?profile.section:form.section,
+      grade:teacher?profile.grade:form.grade,
+      stream:teacher?profile.stream:(form.stream.trim()||null)
+    };
+    setBusy(true);
+    const {data,error}=editing
+      ? await supabase.from('learners').update(payload).eq('id',editing.id).select().single()
+      : await supabase.from('learners').insert({...payload,active:true}).select().single();
+    setBusy(false);
+    if(error)return show(`Could not ${editing?'update':'save'} learner: ${error.message}`);
+    show(editing?'Learner details updated.':'Learner added.');
+    setEditing(null);
+    setForm({...blank});
+    load();
+  }
+
+  async function remove(id){
+    if(!confirm('Remove this learner from the active register?'))return;
+    const {error}=await supabase.from('learners').update({active:false}).eq('id',id);
+    if(error)show(error.message);else{show('Learner removed from active register.');load();}
+  }
+
+  function importFile(e){
+    const file=e.target.files?.[0]; e.target.value=''; if(!file)return;
+    const reader=new FileReader();
+    reader.onload=async ev=>{
+      try{
+        const wb=XLSX.read(ev.target.result,{type:'array'}),sheet=wb.Sheets[wb.SheetNames[0]],data=XLSX.utils.sheet_to_json(sheet);
+        if(!data.length)return show('The spreadsheet is empty.');
+        const payload=data.map(r=>({
+          admission_no:String(r.Admission_No??r.Admission_Number??r['Adm Number']??'').trim()||null,
+          kemis_no:String(r.KEMIS_Number??r.KEMIS??r['KEMIS Number']??'').trim()||null,
+          full_name:String(r.Full_Name??r.Name??r['Full Name']??'').trim(),
+          gender:String(r.Gender??'').trim()||null,
+          residence:residenceLabel(r.Residence),
+          section:teacher?profile.section:String(r.Section??r.section??form.section).trim(),
+          grade:teacher?profile.grade:String(r.Class_Grade??r.Grade??r.grade??form.grade).trim(),
+          stream:teacher?profile.stream:String(r.Stream??r.stream??'').trim()||null,
+          active:true
+        })).filter(r=>r.full_name);
+        if(!payload.length)return show('No valid learner names were found.');
+        const {error}=await supabase.from('learners').insert(payload);
+        if(error)show('Import failed: '+error.message);
+        else{show(`${payload.length} learners imported successfully.`);load();}
+      }catch(err){show('Could not read spreadsheet: '+err.message)}
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  function template(){
+    const ws=XLSX.utils.json_to_sheet([{Admission_No:'1001',KEMIS_Number:'123456789',Full_Name:'Example Learner',Gender:'Male',Residence:'Day Scholar',Section:'JSS',Class_Grade:'Grade 8',Stream:'JK'}]);
+    const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Learners');XLSX.writeFile(wb,'St_Georges_Learner_Import_Template.xlsx');
+  }
+
+  return <>
+    <div className="heroBar">
+      <div><div className="eyebrow">LEARNER REGISTER</div><h3>{teacher?'My Assigned Learners':'Learners'}</h3><p>{rows.length} active learners</p></div>
+      <div className="heroActions"><button className="secondary" onClick={template}>Download CSV/Excel Template</button><label className="fileBtn">Import Excel<input type="file" accept=".xlsx,.xls" onChange={importFile}/></label></div>
+    </div>
+
+    <div className="card">
+      <h3>{editing?'Edit Learner':'Add Learner'}</h3>
+      <form className="grid" onSubmit={saveLearner}>
+        <label>Admission Number<input value={form.admission_no} onChange={e=>setForm({...form,admission_no:e.target.value})}/></label>
+        <label>KEMIS Number<input value={form.kemis_no} onChange={e=>setForm({...form,kemis_no:e.target.value})}/></label>
+        <label>Full Name<input value={form.full_name} onChange={e=>setForm({...form,full_name:e.target.value})} required/></label>
+        <label>Gender<select value={form.gender} onChange={e=>setForm({...form,gender:e.target.value})}><option>Male</option><option>Female</option></select></label>
+        <label>Residence<select value={form.residence} onChange={e=>setForm({...form,residence:e.target.value})}><option>Day Scholar</option><option>Boarder</option></select></label>
+        <label>Section{teacher?<input value={form.section} readOnly/>:<select value={form.section} onChange={e=>setForm({...form,section:e.target.value,grade:LEVELS[e.target.value][0],stream:STREAMS[e.target.value]?.[0]||''})}>{Object.keys(LEVELS).map(x=><option key={x}>{x}</option>)}</select>}</label>
+        <label>Class / Grade{teacher?<input value={form.grade} readOnly/>:<select value={form.grade} onChange={e=>setForm({...form,grade:e.target.value})}>{LEVELS[form.section].map(x=><option key={x}>{x}</option>)}</select>}</label>
+        <label>Stream{teacher?<input value={form.stream} readOnly/>:form.section==='ECDE'?<input value="No streams" readOnly/>:<select value={form.stream} onChange={e=>setForm({...form,stream:e.target.value})}><option value="">Select stream</option>{STREAMS[form.section].map(x=><option key={x} value={x}>{x}</option>)}</select>}</label>
+        <div className="actions"><button disabled={busy}>{busy?(editing?'Saving…':'Adding…'):(editing?'Save Learner Changes':'Add Learner')}</button>{editing&&<button type="button" className="secondary" onClick={()=>{setEditing(null);setForm(blank)}}>Cancel</button>}</div>
+      </form>
+    </div>
+
+    <div className="card">
+      <div className="toolbar"><div><h3>Learner List</h3><p className="muted">Admin and Class Teacher can edit learner details and attendance.</p></div>
+      <div className="actions"><input className="search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search name, admission or KEMIS…"/>
+      {!teacher&&<><select value={section} onChange={e=>{setSection(e.target.value);setGrade(LEVELS[e.target.value][0]);setStream('')}}>{Object.keys(LEVELS).map(x=><option key={x}>{x}</option>)}</select><select value={grade} onChange={e=>setGrade(e.target.value)}>{LEVELS[section].map(x=><option key={x}>{x}</option>)}</select>{section!=='ECDE'&&<select value={stream} onChange={e=>setStream(e.target.value)}><option value="">All Streams</option>{STREAMS[section].map(x=><option key={x}>{x}</option>)}</select>}</>}</div></div>
+      <Table headers={['#','Admission','KEMIS Number','Learner','Gender','Residence','Class','Stream','Action']} rows={visible.map((r,i)=>[
+        i+1,r.admission_no||'—',r.kemis_no||'—',r.full_name,r.gender||'—',residenceLabel(r.residence),r.grade||'—',r.stream||'—',
+        <span className="rowActions"><button className="small secondary" onClick={()=>beginEdit(r)}>Edit</button><button className="small secondary" onClick={()=>setAttendanceEdit(r)}>Attendance</button><button className="small danger" onClick={()=>remove(r.id)}>Remove</button></span>
+      ])}/>
+    </div>
+    {attendanceEdit&&<LearnerAttendanceEditor learner={attendanceEdit} profile={profile} show={show} onClose={()=>setAttendanceEdit(null)}/>}
+  </>
+}
+
+function LearnerAttendanceEditor({learner,profile,show,onClose}){
+  const [date,setDate]=useState(today()),[status,setStatus]=useState(''),[busy,setBusy]=useState(false);
+  useEffect(()=>{
+    (async()=>{
+      const {data,error}=await supabase.from('attendance').select('status').eq('learner_id',learner.id).eq('attendance_date',date).maybeSingle();
+      if(error)show('Could not load attendance: '+error.message); else setStatus(data?.status||'');
+    })();
+  },[learner.id,date]);
+  async function save(){
+    if(!status)return show('Select Present or Absent.');
+    setBusy(true);
+    const {error}=await supabase.from('attendance').upsert({
+      learner_id:learner.id,attendance_date:date,status,marked_by:profile.id
+    },{onConflict:'learner_id,attendance_date'});
+    setBusy(false);
+    if(error)return show('Could not save attendance: '+error.message);
+    show(`Attendance updated for ${learner.full_name}.`);
+    onClose();
+  }
+  return <div className="modalBackdrop"><div className="modal card">
+    <div className="toolbar"><div><h3>Edit Attendance</h3><p className="muted">{learner.full_name} • {learner.grade||''} {learner.stream||''}</p></div><button className="secondary" onClick={onClose}>Close</button></div>
+    <div className="grid"><label>Date<input type="date" value={date} onChange={e=>setDate(e.target.value)}/></label>
+      <label>Attendance<select value={status} onChange={e=>setStatus(e.target.value)}><option value="">Select status</option><option>Present</option><option>Absent</option></select></label>
+    </div>
+    <div className="actions"><button disabled={busy} onClick={save}>{busy?'Saving…':'Save Attendance'}</button></div>
+  </div></div>
 }
 
 function Attendance({profile,show}){
@@ -286,7 +442,82 @@ function Reports({profile,show}){const [date,setDate]=useState(today()),[rows,se
 
 function Profile({profile,setProfile,session,show}){const [form,setForm]=useState({full_name:profile.full_name||'',phone:profile.phone||'',login_name:profile.login_name||''}),[avatar,setAvatar]=useState(profile.avatar_url||''),[oldPass,setOldPass]=useState(''),[newPass,setNewPass]=useState(''),[confirm,setConfirm]=useState(''),[busy,setBusy]=useState(false);async function save(e){e.preventDefault();setBusy(true);const {data,error}=await supabase.from('profiles').update({full_name:form.full_name.trim(),phone:form.phone.trim()||null}).eq('id',profile.id).select().single();setBusy(false);if(error)show(error.message);else{setProfile(data);show('Profile updated.')}}async function upload(e){const f=e.target.files?.[0];e.target.value='';if(!f)return;if(!f.type.startsWith('image/'))return show('Please choose an image.');if(f.size>3*1024*1024)return show('Maximum 3 MB.');setBusy(true);const ext=(f.name.split('.').pop()||'jpg').toLowerCase(),path=`${profile.id}/avatar-${Date.now()}.${ext}`;const {error:up}=await supabase.storage.from('avatars').upload(path,f,{upsert:true,contentType:f.type});if(up){setBusy(false);return show(up.message)}const {data:pub}=supabase.storage.from('avatars').getPublicUrl(path);const {data,error}=await supabase.from('profiles').update({avatar_url:pub.publicUrl}).eq('id',profile.id).select().single();setBusy(false);if(error)show(error.message);else{setProfile(data);setAvatar(data.avatar_url)}}async function password(e){e.preventDefault();if(newPass.length<8)return show('Password must be at least 8 characters.');if(newPass!==confirm)return show('Passwords do not match.');setBusy(true);const {error:re}=await supabase.auth.signInWithPassword({email:session.user.email,password:oldPass});if(re){setBusy(false);return show('Current password is incorrect.')}const {error}=await supabase.auth.updateUser({password:newPass});setBusy(false);if(error)show(error.message);else{setOldPass('');setNewPass('');setConfirm('');show('Password changed successfully.')}}return <><div className="card"><div className="profileHero"><div className="avatar"><img src={avatar||'/school-logo.png'} alt="Profile"/></div><div><h3>{profile.full_name||'My Profile'}</h3><p className="muted">{roleLabel(profile.role)}{profile.grade?` • ${profile.grade} ${profile.stream||''}`:''}</p><label className="fileBtn">Upload Profile Picture<input type="file" accept="image/*" onChange={upload}/></label></div></div></div><div className="card"><h3>My Profile</h3><form className="grid" onSubmit={save}><label>Full Name<input value={form.full_name} onChange={e=>setForm({...form,full_name:e.target.value})} required/></label><label>Login Name<input value={form.login_name} readOnly/></label><label>Email<input value={session.user.email||''} readOnly/></label><label>Phone<input value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})}/></label><label>Role<input value={roleLabel(profile.role)} readOnly/></label>{profile.role==='teacher'&&<><label>Class / Grade<input value={profile.grade||''} readOnly/></label><label>Stream<input value={profile.stream||''} readOnly/></label></>}<div className="actions"><button disabled={busy}>Save Profile</button></div></form></div><div className="card"><h3>Change Password</h3><form className="grid" onSubmit={password}><label>Current Password<input type="password" value={oldPass} onChange={e=>setOldPass(e.target.value)} required/></label><label>New Password<input type="password" value={newPass} onChange={e=>setNewPass(e.target.value)} required/></label><label>Confirm New Password<input type="password" value={confirm} onChange={e=>setConfirm(e.target.value)} required/></label><div className="actions"><button disabled={busy}>Change Password</button></div></form></div></>}
 
-function Users({show}){const empty={login_name:'',email:'',full_name:'',phone:'',role:'teacher',section:'JSS',grade:'Grade 8',stream:'',password:'',confirm:''};const [rows,setRows]=useState([]),[form,setForm]=useState(empty),[busy,setBusy]=useState(false);async function load(){const {data,error}=await supabase.from('profiles').select('*').order('full_name');if(error)show('Could not load users: '+error.message);else setRows(data||[])}useEffect(()=>{load()},[]);function gen(x){return `${x.trim().toLowerCase().replace(/[^a-z0-9._-]/g,'')}@stgeorges.local`}async function create(e){e.preventDefault();if(form.role==='teacher'&&!form.stream.trim())return show('A Class Teacher must have a stream.');if(form.password.length<8)return show('Password must be at least 8 characters.');if(form.password!==form.confirm)return show('Passwords do not match.');setBusy(true);try{const {data:sd}=await supabase.auth.getSession();const {data,error}=await supabase.functions.invoke('admin-create-user',{headers:{Authorization:`Bearer ${sd.session?.access_token||''}`},body:{login_name:form.login_name.trim(),email:form.email.trim()||gen(form.login_name),full_name:form.full_name.trim(),phone:form.phone.trim()||null,role:form.role,section:form.role==='teacher'?form.section:null,grade:form.role==='teacher'?form.grade:null,stream:form.role==='teacher'?form.stream.trim():null,password:form.password}});if(error)return show('Could not create user: '+error.message);if(!data?.success)return show('Could not create user: '+(data?.error||'Unknown error'));show(`User created. Login: ${form.login_name}`);setForm(empty);load()}finally{setBusy(false)}}async function toggle(r){const {error}=await supabase.from('profiles').update({active:!r.active}).eq('id',r.id);if(error)show(error.message);else load()}async function reset(r){const p=prompt(`Set a new password for ${r.login_name||r.full_name}:`);if(p===null)return;if(p.length<8)return show('Minimum 8 characters.');const {data:sd}=await supabase.auth.getSession();const {data,error}=await supabase.functions.invoke('admin-reset-user-password',{headers:{Authorization:`Bearer ${sd.session?.access_token||''}`},body:{user_id:r.id,password:p}});if(error)return show(error.message);if(!data?.success)return show(data?.error||'Reset failed');show('Password reset.')}return <><div className="card"><h3>Add Staff Account</h3><form className="grid" onSubmit={create}><label>Login Name<input value={form.login_name} onChange={e=>setForm({...form,login_name:e.target.value})} placeholder="8JE" required/></label><label>Full Name<input value={form.full_name} onChange={e=>setForm({...form,full_name:e.target.value})} required/></label><label>Email (optional)<input type="email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})}/></label><label>Phone<input value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})}/></label><label>Role<select value={form.role} onChange={e=>setForm({...form,role:e.target.value})}><option value="teacher">Class Teacher</option><option value="admin">Administrator</option></select></label>{form.role==='teacher'&&<><label>Section<select value={form.section} onChange={e=>setForm({...form,section:e.target.value,grade:LEVELS[e.target.value][0]})}>{Object.keys(LEVELS).map(x=><option key={x}>{x}</option>)}</select></label><label>Class / Grade<select value={form.grade} onChange={e=>setForm({...form,grade:e.target.value})}>{LEVELS[form.section].map(x=><option key={x}>{x}</option>)}</select></label><label>Stream<input value={form.stream} onChange={e=>setForm({...form,stream:e.target.value})} required/></label></>}<label>Password<input type="password" value={form.password} onChange={e=>setForm({...form,password:e.target.value})} required/></label><label>Confirm Password<input type="password" value={form.confirm} onChange={e=>setForm({...form,confirm:e.target.value})} required/></label><div className="actions"><button disabled={busy}>{busy?'Creating…':'Create User'}</button></div></form></div><div className="card"><h3>Staff Accounts</h3><Table headers={['Login','Name','Role','Class / Stream','Status','Action']} rows={rows.map(r=>[r.login_name||'—',r.full_name||'—',roleLabel(r.role),r.role==='teacher'?`${r.grade||''} ${r.stream||''}`:'Whole School',r.active===false?'Inactive':'Active',<span className="rowActions"><button className="small secondary" onClick={()=>reset(r)}>Reset Password</button><button className="small secondary" onClick={()=>toggle(r)}>{r.active===false?'Activate':'Deactivate'}</button></span>])}/></div></>}
+function Users({show}){
+  const empty={login_name:'',email:'',full_name:'',phone:'',role:'teacher',section:'JSS',grade:'Grade 8',stream:'',password:'',confirm:'',active:true};
+  const [rows,setRows]=useState([]),[form,setForm]=useState(empty),[editing,setEditing]=useState(null),[busy,setBusy]=useState(false);
+  async function load(){const {data,error}=await supabase.from('profiles').select('*').order('full_name');if(error)show('Could not load users: '+error.message);else setRows(data||[])}
+  useEffect(()=>{load()},[]);
+  function gen(x){return `${x.trim().toLowerCase().replace(/[^a-z0-9._-]/g,'')}@stgeorges.local`}
+  function beginEdit(r){setEditing(r);setForm({login_name:r.login_name||'',email:r.email||'',full_name:r.full_name||'',phone:r.phone||'',role:r.role||'teacher',section:r.section||'JSS',grade:r.grade||'Grade 8',stream:r.stream||'',password:'',confirm:'',active:r.active!==false})}
+  function cancel(){setEditing(null);setForm(empty)}
+  async function create(e){
+    e.preventDefault();
+    if(form.role==='teacher'&&!form.stream.trim())return show('A Class Teacher must have a stream.');
+    if(form.password.length<8)return show('Password must be at least 8 characters.');
+    if(form.password!==form.confirm)return show('Passwords do not match.');
+    setBusy(true);
+    try{
+      const {data:sd}=await supabase.auth.getSession();
+      const {data,error}=await supabase.functions.invoke('admin-create-user',{headers:{Authorization:`Bearer ${sd.session?.access_token||''}`},body:{
+        login_name:form.login_name.trim(),email:form.email.trim()||gen(form.login_name),full_name:form.full_name.trim(),phone:form.phone.trim()||null,
+        role:form.role,section:form.role==='teacher'?form.section:null,grade:form.role==='teacher'?form.grade:null,stream:form.role==='teacher'?form.stream.trim():null,password:form.password
+      }});
+      if(error)return show('Could not create user: '+error.message);
+      if(!data?.success)return show('Could not create user: '+(data?.error||'Unknown error'));
+      show(`User created. Login: ${form.login_name}`);cancel();load();
+    }finally{setBusy(false)}
+  }
+  async function updateUser(e){
+    e.preventDefault();
+    if(form.role==='teacher'&&!form.stream.trim())return show('A Class Teacher must have a stream.');
+    if(form.password && form.password.length<8)return show('Password must be at least 8 characters.');
+    if(form.password!==form.confirm)return show('Passwords do not match.');
+    setBusy(true);
+    try{
+      const {data:sd}=await supabase.auth.getSession();
+      const {data,error}=await supabase.functions.invoke('admin-update-user',{headers:{Authorization:`Bearer ${sd.session?.access_token||''}`},body:{
+        user_id:editing.id,login_name:form.login_name.trim(),email:form.email.trim()||null,full_name:form.full_name.trim(),phone:form.phone.trim()||null,
+        role:form.role,section:form.role==='teacher'?form.section:null,grade:form.role==='teacher'?form.grade:null,stream:form.role==='teacher'?form.stream.trim():null,
+        active:form.active,password:form.password||null
+      }});
+      if(error)return show('Could not update user: '+error.message);
+      if(!data?.success)return show('Could not update user: '+(data?.error||'Unknown error'));
+      show('User details updated successfully.');cancel();load();
+    }finally{setBusy(false)}
+  }
+  async function toggle(r){
+    const {error}=await supabase.from('profiles').update({active:!r.active}).eq('id',r.id);
+    if(error)show(error.message);else load();
+  }
+  async function reset(r){
+    const p=prompt(`Set a new password for ${r.login_name||r.full_name}:`);
+    if(p===null)return;if(p.length<8)return show('Minimum 8 characters.');
+    const {data:sd}=await supabase.auth.getSession();
+    const {data,error}=await supabase.functions.invoke('admin-reset-user-password',{headers:{Authorization:`Bearer ${sd.session?.access_token||''}`},body:{user_id:r.id,password:p}});
+    if(error)return show(error.message);if(!data?.success)return show(data?.error||'Reset failed');show('Password reset.');
+  }
+  return <>
+    <div className="card"><h3>{editing?'Edit Staff Account':'Add Staff Account'}</h3>
+      <form className="grid" onSubmit={editing?updateUser:create}>
+        <label>Login Name<input value={form.login_name} onChange={e=>setForm({...form,login_name:e.target.value})} placeholder="8JK" required/></label>
+        <label>Full Name<input value={form.full_name} onChange={e=>setForm({...form,full_name:e.target.value})} required/></label>
+        <label>Email (optional)<input type="email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})}/></label>
+        <label>Phone<input value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})}/></label>
+        <label>Role<select value={form.role} onChange={e=>setForm({...form,role:e.target.value})}><option value="teacher">Class Teacher</option><option value="admin">Administrator</option></select></label>
+        {form.role==='teacher'&&<><label>Section<select value={form.section} onChange={e=>setForm({...form,section:e.target.value,grade:LEVELS[e.target.value][0]})}>{Object.keys(LEVELS).map(x=><option key={x}>{x}</option>)}</select></label><label>Class / Grade<select value={form.grade} onChange={e=>setForm({...form,grade:e.target.value})}>{LEVELS[form.section].map(x=><option key={x}>{x}</option>)}</select></label><label>Stream{form.section==='ECDE'?<input value="No streams" readOnly/>:<select value={form.stream} onChange={e=>setForm({...form,stream:e.target.value})}><option value="">Select stream</option>{STREAMS[form.section].map(x=><option key={x}>{x}</option>)}</select>}</label></>}
+        {editing&&<label>Status<select value={form.active?'active':'inactive'} onChange={e=>setForm({...form,active:e.target.value==='active'})}><option value="active">Active</option><option value="inactive">Inactive</option></select></label>}
+        <label>{editing?'New Password (optional)':'Password'}<input type="password" value={form.password} onChange={e=>setForm({...form,password:e.target.value})} required={!editing}/></label>
+        <label>{editing?'Confirm New Password':'Confirm Password'}<input type="password" value={form.confirm} onChange={e=>setForm({...form,confirm:e.target.value})} required={!editing}/></label>
+        <div className="actions"><button disabled={busy}>{busy?(editing?'Saving…':'Creating…'):(editing?'Save User Changes':'Create User')}</button>{editing&&<button type="button" className="secondary" onClick={cancel}>Cancel</button>}</div>
+      </form>
+    </div>
+    <div className="card"><h3>Staff Accounts</h3><p className="muted">Administrator can edit login name, name, contact, role, assigned class/stream, status and password.</p>
+      <Table headers={['Login','Name','Role','Class / Stream','Status','Action']} rows={rows.map(r=>[r.login_name||'—',r.full_name||'—',roleLabel(r.role),r.role==='teacher'?`${r.grade||''} ${r.stream||''}`:'Whole School',r.active===false?'Inactive':'Active',
+        <span className="rowActions"><button className="small secondary" onClick={()=>beginEdit(r)}>Edit</button><button className="small secondary" onClick={()=>reset(r)}>Reset Password</button><button className="small secondary" onClick={()=>toggle(r)}>{r.active===false?'Activate':'Deactivate'}</button></span>
+      ])}/>
+    </div>
+  </>
+}
 
 function Classes({show}){const [rows,setRows]=useState([]),[form,setForm]=useState({section:'JSS',grade:'Grade 7',stream:'JE'});async function load(){const {data,error}=await supabase.from('classes').select('*').order('section').order('grade').order('stream');if(error)show(error.message);else setRows(data||[])}useEffect(()=>{load()},[]);async function add(e){e.preventDefault();if(form.section!=='ECDE'&&!form.stream.trim())return show('Select a stream.');const {error}=await supabase.from('classes').insert({section:form.section,grade:form.grade,stream:form.section==='ECDE'?null:form.stream.trim()});if(error)show(error.message);else{show('Class/stream added.');setForm({...form,stream:form.section==='ECDE'?'':(STREAMS[form.section]?.[0]||'')});load()}}const streamOptions=STREAMS[form.section]||[];return <><div className="card"><h3>Add Class / Stream</h3><form className="grid" onSubmit={add}><label>Section<select value={form.section} onChange={e=>{const section=e.target.value;setForm({section,grade:LEVELS[section][0],stream:STREAMS[section]?.[0]||''})}}>{Object.keys(LEVELS).map(x=><option key={x}>{x}</option>)}</select></label><label>Class / Grade<select value={form.grade} onChange={e=>setForm({...form,grade:e.target.value})}>{LEVELS[form.section].map(x=><option key={x}>{x}</option>)}</select></label><label>Stream{form.section==='ECDE'?<input value="No streams" readOnly/>:<select value={form.stream} onChange={e=>setForm({...form,stream:e.target.value})}>{streamOptions.map(x=><option key={x} value={x}>{x}</option>)}</select>}</label><div className="actions"><button>Add</button></div></form></div><div className="card"><Table headers={['Section','Class','Stream']} rows={rows.map(r=>[r.section,r.grade,r.stream||'—'])}/></div></>}
 function DisplaySettings({settings,setSettings,show}){const [draft,setDraft]=useState(settings);function save(){const d={schoolName:draft.schoolName,appName:draft.appName,compactTables:draft.compactTables};saveSettings(d);setSettings(d);show('Display settings saved.')}return <div className="card"><h3>Customize Display</h3><p className="muted">The school logo and footer remain protected.</p><form className="grid" onSubmit={e=>{e.preventDefault();save()}}><label>School Name<input value={draft.schoolName} onChange={e=>setDraft({...draft,schoolName:e.target.value})}/></label><label>Application Name<input value={draft.appName} onChange={e=>setDraft({...draft,appName:e.target.value})}/></label><label className="checkLabel"><input type="checkbox" checked={draft.compactTables} onChange={e=>setDraft({...draft,compactTables:e.target.checked})}/> Compact tables</label><div className="actions"><button>Save Display Settings</button><button type="button" className="secondary" onClick={()=>{setDraft(DEFAULT_SETTINGS);saveSettings(DEFAULT_SETTINGS);setSettings(DEFAULT_SETTINGS)}}>Reset</button></div></form></div>}
